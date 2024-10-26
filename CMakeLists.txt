@@ -1,10 +1,26 @@
-cmake_minimum_required(VERSION 3.30.4)
+cmake_minimum_required(VERSION 3.30)
 project(emu8086rocket)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Add the library directory to the include path
-# include_directories(lib/include)
-add_executable(rocket main.cpp)
+add_subdirectory(external/raylib)
 
-# Link the library to the executable
-# target_link_libraries(my_executable my_library)
+add_executable(rocket src/main.cpp)
+
+target_link_libraries(rocket PRIVATE raylib)
+
+
+# Move resources into build directory
+add_custom_target(copy_resources ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${PROJECT_SOURCE_DIR}/src/resources
+    ${PROJECT_BINARY_DIR}/Debug/resources
+    COMMENT "Copying textures into binary directory")   
+
+
+add_dependencies(rocket copy_resources)
+
+set(CMAKE_INSTALL_PREFIX "C:/emu8086")
+install(TARGETS rocket DESTINATION DEVICES)
+
