@@ -35,23 +35,58 @@ int main() {
     rocket.position = Vector2{width/2, height/2};
 
 
+    Image noiseImage = GenImagePerlinNoise(width, height, 50, 50, 2.5f);
+    Texture2D noiseTexture = LoadTextureFromImage(noiseImage);
+
+    // Intialize shader
+    Shader shader = LoadShader(0, TextFormat("resources/space_noise.fs", 330));
+    // int resolutionLoc = GetShaderLocation(shader, "iResolution");
+    // int timeLoc = GetShaderLocation(shader, "iTime");
+    // float screenSize[2] = { (float)GetScreenWidth(), (float)GetScreenHeight() };
+    // SetShaderValue(shader, resolutionLoc, &screenSize, SHADER_UNIFORM_VEC2);
+
+    int secondsLoc = GetShaderLocation(shader, "seconds");
+    int freqXLoc = GetShaderLocation(shader, "freqX");
+    int freqYLoc = GetShaderLocation(shader, "freqY");
+    int ampXLoc = GetShaderLocation(shader, "ampX");
+    int ampYLoc = GetShaderLocation(shader, "ampY");
+    int speedXLoc = GetShaderLocation(shader, "speedX");
+    int speedYLoc = GetShaderLocation(shader, "speedY");
+
+
+    // Shader uniform values that can be updated at any time
+    float freqX = 10.0f;
+    float freqY = 10.0f;
+    float ampX = 2.0f;
+    float ampY = 2.0f;
+    float speedX = 3.0f;
+    float speedY = 3.0f;
+
+    float screenSize[2] = { (float)GetScreenWidth(), (float)GetScreenHeight() };
+    SetShaderValue(shader, GetShaderLocation(shader, "size"), &screenSize, SHADER_UNIFORM_VEC2);
+    SetShaderValue(shader, freqXLoc, &freqX, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, freqYLoc, &freqY, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, ampXLoc, &ampX, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, ampYLoc, &ampY, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, speedXLoc, &speedX, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, speedYLoc, &speedY, SHADER_UNIFORM_FLOAT);
+
+    float seconds = 0.0f;
+
     // Source rectangle (part of the texture to use for drawing)
     Rectangle sourceRec = { 0.0f, 0.0f, (float)frameWidth, (float)frameHeight };
     // Destination rectangle (screen rectangle where drawing part of texture)
     Rectangle destRec = { rocket.position.x, rocket.position.y, frameWidth * frameScaleFactor, frameHeight * frameScaleFactor };
     // Origin of the texture (rotation/scale point), it's relative to destination rectangle size
     Vector2 origin = { (float)(frameWidth * frameScaleFactor) / 2, (float)(frameHeight * frameScaleFactor) / 2 };
-    Image perlinNoise = GenImagePerlinNoise(width, height, 50, 50, 3.0f);
-    Texture2D noiseTex = LoadTextureFromImage(perlinNoise);
     
-
     while (!WindowShouldClose())
     {
         if (IsKeyDown(KEY_LEFT))  rocket.rotation -= ROCKET_ROTATION_SPEED;
         if (IsKeyDown(KEY_RIGHT)) rocket.rotation += ROCKET_ROTATION_SPEED;
 
-        rocket.velocity.x = sin(rocket.rotation * DEG2RAD) * ROCKET_SPEED;
-        rocket.velocity.y = cos(rocket.rotation * DEG2RAD) * ROCKET_SPEED;
+        rocket.velocity.x = cos(rocket.rotation * DEG2RAD) * ROCKET_SPEED;
+        rocket.velocity.y = sin(rocket.rotation * DEG2RAD) * ROCKET_SPEED;
 
         if (IsKeyDown(KEY_UP))   rocket.acceleration += ROCKET_ACCELRATION;
         if (IsKeyDown(KEY_DOWN)) rocket.acceleration -= ROCKET_ACCELRATION;
@@ -61,11 +96,17 @@ int main() {
         destRec.x = rocket.position.x;
         destRec.y = rocket.position.y;
 
+        seconds = GetTime();
+        SetShaderValue(shader, secondsLoc, &seconds, SHADER_UNIFORM_FLOAT);
+        
+
         BeginDrawing();
             ClearBackground(BLACK);
-            BeginBlendMode(BLEND_ADDITIVE);
-                DrawTexture(noiseTex, 0, 0, Color{255, 255, 255, 30});
-            EndBlendMode();
+            BeginShaderMode(shader);
+                // DrawRectangle(0, 0, width, height, RAYWHITE);
+                DrawTexture(noiseTexture, 0, 0, Color{255, 255, 255, 30});
+                DrawTexture(noiseTexture, noiseTexture.width, 0, Color{255, 255, 255, 30});
+            EndShaderMode();
             DrawTexturePro(sprite, sourceRec, destRec, origin, (float)rocket.rotation, WHITE);
 
             // Debug Information
@@ -75,6 +116,11 @@ int main() {
             DrawText(TextFormat("Rotation: %03.f", rocket.rotation), 20, 110, 20, WHITE);
         EndDrawing();
     }
+    
+    // De-initialization
+    UnloadShader(shader); 
+    UnloadTexture(sprite);
+
     CloseWindow();
     return 0;
 }
