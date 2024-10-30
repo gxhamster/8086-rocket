@@ -40,19 +40,13 @@ int main() {
 
     // Intialize shader
     Shader shader = LoadShader(0, TextFormat("resources/space_noise.fs", 330));
-    // int resolutionLoc = GetShaderLocation(shader, "iResolution");
-    // int timeLoc = GetShaderLocation(shader, "iTime");
-    // float screenSize[2] = { (float)GetScreenWidth(), (float)GetScreenHeight() };
-    // SetShaderValue(shader, resolutionLoc, &screenSize, SHADER_UNIFORM_VEC2);
-
     int secondsLoc = GetShaderLocation(shader, "seconds");
-    int freqXLoc = GetShaderLocation(shader, "freqX");
-    int freqYLoc = GetShaderLocation(shader, "freqY");
-    int ampXLoc = GetShaderLocation(shader, "ampX");
-    int ampYLoc = GetShaderLocation(shader, "ampY");
-    int speedXLoc = GetShaderLocation(shader, "speedX");
-    int speedYLoc = GetShaderLocation(shader, "speedY");
-
+    int freqXLoc =   GetShaderLocation(shader, "freqX");
+    int freqYLoc =   GetShaderLocation(shader, "freqY");
+    int ampXLoc =    GetShaderLocation(shader, "ampX");
+    int ampYLoc =    GetShaderLocation(shader, "ampY");
+    int speedXLoc =  GetShaderLocation(shader, "speedX");
+    int speedYLoc =  GetShaderLocation(shader, "speedY");
 
     // Shader uniform values that can be updated at any time
     float freqX = 10.0f;
@@ -85,8 +79,8 @@ int main() {
         if (IsKeyDown(KEY_LEFT))  rocket.rotation -= ROCKET_ROTATION_SPEED;
         if (IsKeyDown(KEY_RIGHT)) rocket.rotation += ROCKET_ROTATION_SPEED;
 
-        rocket.velocity.x = cos(rocket.rotation * DEG2RAD) * ROCKET_SPEED;
-        rocket.velocity.y = sin(rocket.rotation * DEG2RAD) * ROCKET_SPEED;
+        rocket.velocity.x = sin(rocket.rotation * DEG2RAD) * ROCKET_SPEED;
+        rocket.velocity.y = cos(rocket.rotation * DEG2RAD) * ROCKET_SPEED;
 
         if (IsKeyDown(KEY_UP))   rocket.acceleration += ROCKET_ACCELRATION;
         if (IsKeyDown(KEY_DOWN)) rocket.acceleration -= ROCKET_ACCELRATION;
@@ -98,7 +92,18 @@ int main() {
 
         seconds = GetTime();
         SetShaderValue(shader, secondsLoc, &seconds, SHADER_UNIFORM_FLOAT);
-        
+
+        // Keep the rocket within screen bounds
+        int rocketHeight = destRec.height;
+        if (destRec.x > width + rocketHeight) 
+            rocket.position.x = -rocketHeight;
+        else if (destRec.x < -rocketHeight)
+            rocket.position.x = width + rocketHeight;
+        if (destRec.y > height + rocketHeight)
+            rocket.position.y = -rocketHeight;
+        else if (destRec.y < -rocketHeight)
+            rocket.position.y = height + rocketHeight;
+
 
         BeginDrawing();
             ClearBackground(BLACK);
