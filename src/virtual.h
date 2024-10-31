@@ -1,30 +1,10 @@
 /*
- this header file can be used to implement your own external devices for
- emu8086 - 8086 microprocessor emulator.
- devices can be written in borland turbo c, visual c++
- (for visual basic use io.bas instead).
-
- supported input / output addresses:
-                  0 to 65535 (0x0 - 0xFFFF)
-
- most recent version of emu8086 is required,
- check this url for the latest version:
- http://www.emu8086.com
-
- you don't need to understand the code of this
- module, just include this file (io.h) into your
- project, and use these functions:
-
-    unsigned char READ_IO_BYTE(long lPORT_NUM)
-    short int READ_IO_WORD(long lPORT_NUM)
-
-    void WRITE_IO_BYTE(long lPORT_NUM, unsigned char uValue)
-    void WRITE_IO_WORD(long lPORT_NUM, short int iValue)
-
- where:
-  lPORT_NUM - is a number in range: from 0 to 65535.
-  uValue    - unsigned byte value to be written to a port.
-  iValue    - signed word value to be written to a port.
+	This file is used as a helper module to access
+	the virtual device file c:/emu8086.io. We can set values
+	at different ports using the write_* functions in this file.
+	Be sure to call the init_virtual_device function before calling
+	any read or write function to setup handlers to the file. Call 
+	free_virtual_device after finishing and need to exit program.
 */
 #include <cstdlib>
 #include <cstring>
@@ -95,80 +75,4 @@ void write_port_word(long port, short int iValue) {
 	is_virtual_device_initalized();
 	write_port_byte (port, iValue & 0x00FF);
 	write_port_byte (port + 1, (iValue & 0xFF00) >> 8);
-}
-
-/* Old IO functions from emu8086*/
-
-unsigned char READ_IO_BYTE(long lPORT_NUM) {
-	unsigned char tb;
-
-	char buf[500];
-	unsigned int ch;
-
-	strcpy(buf, IO_FILE_PATH);
-
-	FILE *fp;
-
-	fp = fopen(buf,"r+");
-	if (fp == NULL) {
-		fprintf(stderr, "[-] Cannot open C:/emu8086.io");
-		exit(EXIT_FAILURE);
-	}
-
-	// Read byte from port:
-	fseek(fp, lPORT_NUM, SEEK_SET);
-    ch = fgetc(fp);
-
-	fclose(fp);
-
-	tb = ch;
-
-	return tb;
-}
-
-short int READ_IO_WORD(long lPORT_NUM)
-{
-	short int ti;
-	unsigned char tb1;
-	unsigned char tb2;
-
-	tb1 = READ_IO_BYTE(lPORT_NUM);
-	tb2 = READ_IO_BYTE(lPORT_NUM + 1);
-
-	// Convert 2 bytes to a 16 bit word:
-	ti = tb2;
-    ti = ti << 8;
-	ti = ti + tb1;
-
-	return ti;
-}
-
-void WRITE_IO_BYTE(long lPORT_NUM, unsigned char uValue)
-{
-	char buf[500];
-	unsigned int ch;
-
-	strcpy(buf, IO_FILE_PATH);
-
-	FILE *fp;
-
-	fp = fopen(buf,"r+");
-	if (fp == NULL) {
-		fprintf(stderr, "[-] Cannot open C:/emu8086.io");
-		exit(EXIT_FAILURE);
-	}
-
-    ch = uValue;
-
-	// Write byte to port:
-	fseek(fp, lPORT_NUM, SEEK_SET);
-	fputc(ch, fp);
-
-	fclose(fp);
-}
-
-void WRITE_IO_WORD(long lPORT_NUM, short int iValue)
-{
-	WRITE_IO_BYTE (lPORT_NUM, iValue & 0x00FF);
-	WRITE_IO_BYTE (lPORT_NUM + 1, (iValue & 0xFF00) >> 8);
 }
