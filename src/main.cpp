@@ -32,16 +32,18 @@ enum Command {
     ACCEL_POS,    // Acceleration increases by ROCKET_ACCELERATION
     ACCEL_NEG,
     ROTATE_RIGHT, // Rotation factor is ROCKET_ROTATION_SPEED
-    ROTATE_LEFT
+    ROTATE_LEFT,
+    EXIT          // Sent when emulator wants to shutdown the device
 };
 
 
-char *command_str_map[5] = {
+char *command_str_map[6] = {
     "Command::NOP",
     "Command::ACCEL_POS",
     "Command::ACCEL_NEG",
     "Command::ROTATE_RIGHT",
     "Command::ROTATE_LEFT",
+    "Command::EXIT",
 };
 
 bool portAccessAvailable = false;
@@ -118,7 +120,7 @@ int main() {
     int command = 0;
     // Disregard NOP commands, Used only for displaying the command.
     int lastCommandExecuted = 0;
-    while (!WindowShouldClose())
+    while (!WindowShouldClose() && command != Command::EXIT)
     {
         // Process commands from port
         if (portAccessAvailable) {
