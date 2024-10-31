@@ -18,9 +18,13 @@ add_custom_target(copy_resources ALL
     ${PROJECT_BINARY_DIR}/Debug/resources
     COMMENT "Copying textures into binary directory")   
 
-
 add_dependencies(rocket copy_resources)
 
 set(CMAKE_INSTALL_PREFIX "C:/emu8086")
 install(TARGETS rocket DESTINATION DEVICES)
+# Current working directory when running from emulator is C:/emu8086/MyBuild
+# So move the sprites and textures, shaders into that folder
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/src/resources
+        DESTINATION MyBuild)
+
 
