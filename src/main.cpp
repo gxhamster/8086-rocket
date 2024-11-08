@@ -10,6 +10,7 @@
 
 #define METEOR_SPEED 0.5f
 #define METEOR_ANGULAR_SPEED 0.5f
+#define METEOR_DEACCEL 0.0001f
 #define MAX_METEORS 10
 #define METEOR_COLLISION_DAMPING 0.005f
 #define METEOR_ROCKET_COLLISION_DAMPING 0.1f;
@@ -62,6 +63,8 @@ char *command_str_map[6] = {
 bool portAccessAvailable = false;
 
 Meteor meteors[MAX_METEORS] = {};
+
+Meteor *currentSelectedMeteorDebug = nullptr;
 
 int main() {
     const int width = 920;
@@ -180,6 +183,21 @@ int main() {
             write_port_byte(STATUS_PORT, Status::COMMAND_NOT_READY);
         }
 
+
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            Vector2 mousePos = GetMousePosition();
+            int idx;
+            float lowestDistance = 999999;
+            for (int i = 0 ; i < MAX_METEORS; i++) {
+                float distance = Vector2Distance(meteors[i].position, mousePos);
+                if (distance < lowestDistance) {
+                    lowestDistance = distance;
+                    idx = i;
+                }
+            }
+            currentSelectedMeteorDebug = &meteors[idx];
+        }
+
         // Manual key control
         if (IsKeyDown(KEY_LEFT))  rocket.rotation -= ROCKET_ROTATION_SPEED;
         if (IsKeyDown(KEY_RIGHT)) rocket.rotation += ROCKET_ROTATION_SPEED;
@@ -219,8 +237,8 @@ int main() {
             if (isColliding) {
                 Vector2 norm = Vector2Normalize(rocket.velocity);
                 if (abs(rocket.acceleration) < 0.20) {
-                    meteor->velocity.x =  -1 * meteor->velocity.x;
-                    meteor->velocity.y =  -1 * meteor->velocity.y;
+                    meteor->velocity.x =  -0.5 * meteor->velocity.x;
+                    meteor->velocity.y =  -0.5 * meteor->velocity.y;
                 } else {
                     meteor->velocity.x +=  norm.x * rocket.acceleration * METEOR_ROCKET_COLLISION_DAMPING;
                     meteor->velocity.y +=  -1 * norm.y * rocket.acceleration * METEOR_ROCKET_COLLISION_DAMPING;
@@ -252,6 +270,12 @@ int main() {
             Meteor *meteor = &meteors[i];
             meteor->position.x += meteor->velocity.x;
             meteor->position.y += meteor->velocity.y;
+            // Dampen asteroids over time
+            if (abs(meteor->velocity.x) > 0.0f) 
+                meteor->velocity.x = Lerp(meteor->velocity.x, 0.0, METEOR_DEACCEL);
+            if (abs(meteor->velocity.y) > 0.0f)
+                meteor->velocity.y = Lerp(meteor->velocity.y, 0.0, METEOR_DEACCEL);
+
             int meteorHeight = meteorSprite.height;
             // Meteor wall behaviour
             if (meteor->position.x > width + meteorHeight)
@@ -296,7 +320,11 @@ int main() {
             if (portAccessAvailable)
                 DrawTextEx(ttfFont, TextFormat("Last run command: %s", command_str_map[lastCommandExecuted]), Vector2{20, 145},DEFAULT_FONT_SIZE, 1.0, WHITE );
 
-            DrawTextEx(ttfFont, TextFormat("Velocity: %0.2f, %0.2f", meteors[0].velocity.x, meteors[0].velocity.y), Vector2{width - 300.0, 20},DEFAULT_FONT_SIZE, 1.0, WHITE );
+            if (currentSelectedMeteorDebug != nullptr) {
+                DrawCircleLines(currentSelectedMeteorDebug->position.x, currentSelectedMeteorDebug->position.y, currentSelectedMeteorDebug->radius * 20.0, RED);
+                DrawTextEx(ttfFont, TextFormat("Position: %03.0f, %03.0f", currentSelectedMeteorDebug->position.x, currentSelectedMeteorDebug->position.y), Vector2{width - 250.0f, 20},DEFAULT_FONT_SIZE, 1.0, WHITE );
+                DrawTextEx(ttfFont, TextFormat("Velocity: %0.2f, %0.2f", currentSelectedMeteorDebug->velocity.x, currentSelectedMeteorDebug->velocity.y), Vector2{width - 250.0, 45},DEFAULT_FONT_SIZE, 1.0, WHITE );
+            }
 
         EndDrawing();
     }
