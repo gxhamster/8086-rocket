@@ -1,11 +1,18 @@
 #include <iostream>
 #include <sstream>
 #include <raylib.h>
+#include <raymath.h>
 #include "virtual.h"
 
 #define ROCKET_SPEED 6.0f
 #define ROCKET_ROTATION_SPEED 3.0f
 #define ROCKET_ACCELRATION 0.02f
+
+#define METEOR_SPEED 0.5f
+#define METEOR_ANGULAR_SPEED 0.5f
+#define MAX_METEORS 10
+#define METEOR_COLLISION_DAMPING 0.005f
+#define METEOR_ROCKET_COLLISION_DAMPING 0.1f;
 
 #define COMMAND_PORT 10
 #define STATUS_PORT  11
@@ -18,6 +25,12 @@ typedef struct Rocket {
     float rotation;
     float acceleration;
 } Rocket;
+
+typedef struct Meteor {
+    Vector2 position;
+    Vector2 velocity;
+    float   radius;   // Scale factor of texture (1.0 default)
+} Meteor;
 
 enum Status {
     NOT_READY = 0,
@@ -48,6 +61,8 @@ char *command_str_map[6] = {
 
 bool portAccessAvailable = false;
 
+Meteor meteors[MAX_METEORS] = {};
+
 int main() {
     const int width = 920;
     const int height = 600;
@@ -67,10 +82,10 @@ int main() {
     InitWindow(width, height, "Rocket Simulation - 8086");
     SetTargetFPS(60);
 
-    Texture2D sprite = LoadTexture("resources/rocket.png");
+    Texture2D sprite = LoadTexture("resources/Main Ship - Base - Full health.png");
     float frameWidth = sprite.width;
     float frameHeight = sprite.height;
-    float frameScaleFactor = 0.1;
+    float frameScaleFactor = 1.5;
     Rocket rocket = Rocket{0.0};
     rocket.position = Vector2{width/2, height/2};
 
@@ -116,6 +131,23 @@ int main() {
     Rectangle destRec = { rocket.position.x, rocket.position.y, frameWidth * frameScaleFactor, frameHeight * frameScaleFactor };
     // Origin of the texture (rotation/scale point), it's relative to destination rectangle size
     Vector2 origin = { (float)(frameWidth * frameScaleFactor) / 2, (float)(frameHeight * frameScaleFactor) / 2 };
+
+    // Initialize meteors
+    Texture2D meteorSprite = LoadTexture("resources/Asteroid 01 - Base.png");
+    // Rectangle meteorSpriteSourceRec = {0.0f, 0.0f, meteorSprite.width, meteorSprite.height};
+    // Rectangle meteorSpriteDestRec   = {0.0f, 0.0f, meteorSprite.width, meteorSprite.height};
+
+    for (int i = 0; i < MAX_METEORS; i++) {
+        Vector2 spawnPosition = Vector2{
+            (float)GetRandomValue(0, width),
+            (float)GetRandomValue(-1, 1) * height
+        };
+        meteors[i] = Meteor{
+            spawnPosition,
+            Vector2Normalize(Vector2Subtract(rocket.position, spawnPosition)),
+            (float)GetRandomValue(0.5, 2.0)
+        };
+    }
 
     int command = 0;
     // Disregard NOP commands, Used only for displaying the command.
@@ -177,6 +209,61 @@ int main() {
             rocket.position.y = -rocketHeight;
         else if (destRec.y < -rocketHeight)
             rocket.position.y = height + rocketHeight;
+        
+        Rectangle shipRec;
+        // Check meteor collisions
+        for (int i = 0; i < MAX_METEORS; i++) {
+            // With rocket
+            Meteor *meteor = &meteors[i];
+            bool isColliding = CheckCollisionCircles(meteor->position, meteor->radius * 13.0, rocket.position, destRec.width / 2 - 10.0f);
+            if (isColliding) {
+                Vector2 norm = Vector2Normalize(rocket.velocity);
+                if (abs(rocket.acceleration) < 0.20) {
+                    meteor->velocity.x =  -1 * meteor->velocity.x;
+                    meteor->velocity.y =  -1 * meteor->velocity.y;
+                } else {
+                    meteor->velocity.x +=  norm.x * rocket.acceleration * METEOR_ROCKET_COLLISION_DAMPING;
+                    meteor->velocity.y +=  -1 * norm.y * rocket.acceleration * METEOR_ROCKET_COLLISION_DAMPING;
+                }
+            }
+
+            // With other meteors
+            for (int j = 0; j < MAX_METEORS; j++) {
+                Meteor *meteor1 = &meteors[j];
+                // No need to check collision for itself
+                if (i == j)
+                    continue;
+                bool isColliding = CheckCollisionCircles(meteor->position, meteor->radius * 13.0, meteor1->position, meteor1->radius * 13.0);
+                if (isColliding) {
+                    // Change direction of meteor after collision relative to size
+                    Vector2 tempMeteor1Vel = meteor1->velocity;
+                    meteor1->velocity.x += -1 * meteor->velocity.x * meteor->radius * METEOR_COLLISION_DAMPING ;
+                    meteor1->velocity.y += -1 * meteor->velocity.y * meteor->radius * METEOR_COLLISION_DAMPING ;
+                    meteor->velocity.x += -1 * tempMeteor1Vel.x * meteor1->radius * METEOR_COLLISION_DAMPING;
+                    meteor->velocity.y += -1 * tempMeteor1Vel.y * meteor1->radius * METEOR_COLLISION_DAMPING;
+                }
+            }
+
+
+        }
+
+        // Update meteors
+        for (int i = 0; i < MAX_METEORS; i++) {
+            Meteor *meteor = &meteors[i];
+            meteor->position.x += meteor->velocity.x;
+            meteor->position.y += meteor->velocity.y;
+            int meteorHeight = meteorSprite.height;
+            // Meteor wall behaviour
+            if (meteor->position.x > width + meteorHeight)
+                meteor->position.x = -meteorHeight;
+            else if (meteor->position.x < -meteorHeight)
+                meteor->position.x = width + meteorHeight;
+            if (meteor->position.y > height + meteorHeight)
+                meteor->position.y = -meteorHeight;
+            else if (meteor->position.y < -meteorHeight)
+                meteor->position.y = height + meteorHeight;
+
+        }
 
 
         BeginDrawing();
@@ -185,9 +272,22 @@ int main() {
                 DrawTexture(noiseTexture, 0, 0, Color{255, 255, 255, 30});
                 DrawTexture(noiseTexture, noiseTexture.width, 0, Color{255, 255, 255, 30});
             EndShaderMode();
-            DrawTexturePro(sprite, sourceRec, destRec, origin, (float)rocket.rotation, WHITE);
 
-            // Debug Information
+            // Draw meteors
+            for (int i = 0; i < MAX_METEORS; i++) {
+                Meteor *meteor = &meteors[i];
+                Rectangle meteorSpriteSourceRec = {0.0f, 0.0f, (float)meteorSprite.width, (float)meteorSprite.height};
+                Rectangle meteorSpriteDestRec   = {meteor->position.x, meteor->position.y, (float)meteorSprite.width * meteor->radius, (float)meteorSprite.height * meteor->radius};
+                Vector2 meteorTextureOrigin     = { (float)(meteorSprite.width * meteor->radius) / 2, (float)(meteorSprite.height * meteor->radius) / 2 };
+                DrawTexturePro(meteorSprite, meteorSpriteSourceRec, meteorSpriteDestRec, meteorTextureOrigin, 0.0, WHITE);
+                // DrawCircle(meteor->position.x, meteor->position.y, meteor->radius * 13.0, ORANGE);
+            }
+
+            // Draw rocket texture
+            DrawTexturePro(sprite, sourceRec, destRec, origin, (float)rocket.rotation, WHITE);
+            // DrawCircle(rocket.position.x, rocket.position.y, destRec.width /2 - 10.0f, RED);
+
+            // Rocket Debug Information
             DrawTextEx(ttfFont, TextFormat("Position: %03.0f, %03.0f", rocket.position.x, rocket.position.y), Vector2{20, 20},DEFAULT_FONT_SIZE, 1.0, WHITE );
             DrawTextEx(ttfFont, TextFormat("Velocity: %0.2f, %0.2f", rocket.velocity.x, rocket.velocity.y), Vector2{20, 45},DEFAULT_FONT_SIZE, 1.0, WHITE );
             DrawTextEx(ttfFont, TextFormat("Acceleration: %0.2f", rocket.acceleration), Vector2{20, 70},DEFAULT_FONT_SIZE, 1.0, WHITE );
@@ -195,6 +295,9 @@ int main() {
             DrawTextEx(ttfFont, TextFormat("Connected to port: %s", portAccessAvailable ? "Yes" : "No"), Vector2{20, 120},DEFAULT_FONT_SIZE, 1.0, WHITE );
             if (portAccessAvailable)
                 DrawTextEx(ttfFont, TextFormat("Last run command: %s", command_str_map[lastCommandExecuted]), Vector2{20, 145},DEFAULT_FONT_SIZE, 1.0, WHITE );
+
+            DrawTextEx(ttfFont, TextFormat("Velocity: %0.2f, %0.2f", meteors[0].velocity.x, meteors[0].velocity.y), Vector2{width - 300.0, 20},DEFAULT_FONT_SIZE, 1.0, WHITE );
+
         EndDrawing();
     }
     
