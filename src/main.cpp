@@ -10,9 +10,9 @@
 
 #define METEOR_SPEED 0.5f
 #define METEOR_ANGULAR_SPEED 0.5f
-#define METEOR_DEACCEL 0.0001f
-#define MAX_METEORS 10
-#define METEOR_COLLISION_DAMPING 0.005f
+#define METEOR_DEACCEL 0.0003f
+#define MAX_METEORS 15
+#define METEOR_COLLISION_DAMPING 0.0001f
 #define METEOR_ROCKET_COLLISION_DAMPING 0.1f;
 
 #define COMMAND_PORT 10
@@ -67,7 +67,7 @@ Meteor meteors[MAX_METEORS] = {};
 Meteor *currentSelectedMeteorDebug = nullptr;
 
 int main() {
-    const int width = 920;
+    const int width = 1020;
     const int height = 600;
     // Wait until response from port
     if (init_virtual_device() == 0) {
@@ -85,6 +85,8 @@ int main() {
     InitWindow(width, height, "Rocket Simulation - 8086");
     SetTargetFPS(60);
 
+
+    // Load rocket texture
     Texture2D sprite = LoadTexture("resources/Main Ship - Base - Full health.png");
     float frameWidth = sprite.width;
     float frameHeight = sprite.height;
@@ -92,39 +94,48 @@ int main() {
     Rocket rocket = Rocket{0.0};
     rocket.position = Vector2{width/2, height/2};
 
-
     // Load font
     Font ttfFont = LoadFont("resources/font.ttf");
 
     Image noiseImage = GenImagePerlinNoise(width, height, 50, 50, 2.5f);
     Texture2D noiseTexture = LoadTextureFromImage(noiseImage);
 
-    // Intialize shader
+    // Intialize shader (distortion cloud)
     Shader shader = LoadShader(0, TextFormat("resources/space_noise.fs", 330));
-    int secondsLoc = GetShaderLocation(shader, "seconds");
-    int freqXLoc =   GetShaderLocation(shader, "freqX");
-    int freqYLoc =   GetShaderLocation(shader, "freqY");
-    int ampXLoc =    GetShaderLocation(shader, "ampX");
-    int ampYLoc =    GetShaderLocation(shader, "ampY");
-    int speedXLoc =  GetShaderLocation(shader, "speedX");
-    int speedYLoc =  GetShaderLocation(shader, "speedY");
+    int useconds = GetShaderLocation(shader, "seconds");
+    int ufreqX =   GetShaderLocation(shader, "freqX");
+    int ufreqY =   GetShaderLocation(shader, "freqY");
+    int uampX =    GetShaderLocation(shader, "ampX");
+    int uampY =    GetShaderLocation(shader, "ampY");
+    int uspeedX =  GetShaderLocation(shader, "speedX");
+    int uspeedY =  GetShaderLocation(shader, "speedY");
 
     // Shader uniform values that can be updated at any time
-    float freqX = 10.0f;
-    float freqY = 10.0f;
-    float ampX = 2.0f;
-    float ampY = 2.0f;
-    float speedX = 3.0f;
-    float speedY = 3.0f;
+    const float freqX = 10.0f;
+    const float freqY = 10.0f;
+    const float ampX = 2.0f;
+    const float ampY = 2.0f;
+    const float speedX = 3.0f;
+    const float speedY = 3.0f;
 
     float screenSize[2] = { (float)GetScreenWidth(), (float)GetScreenHeight() };
     SetShaderValue(shader, GetShaderLocation(shader, "size"), &screenSize, SHADER_UNIFORM_VEC2);
-    SetShaderValue(shader, freqXLoc, &freqX, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(shader, freqYLoc, &freqY, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(shader, ampXLoc, &ampX, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(shader, ampYLoc, &ampY, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(shader, speedXLoc, &speedX, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(shader, speedYLoc, &speedY, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, ufreqX, &freqX, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, ufreqY, &freqY, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, uampX, &ampX, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, uampY, &ampY, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, uspeedX, &speedX, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, uspeedY, &speedY, SHADER_UNIFORM_FLOAT);
+
+
+    // Intialize shader (stars)
+    Image colorImage = GenImageColor(width, height, BLACK);
+    Texture2D colorTexture = LoadTextureFromImage(colorImage);
+    Shader starsShader = LoadShader(0, TextFormat("resources/stars.fs", 330));
+    int utime = GetShaderLocation(starsShader, "time");
+    int ubgcolor = GetShaderLocation(starsShader, "bg_color");
+    Vector4 bg_color = {0.0, 0.0, 0.0, 1.0};
+    SetShaderValue(starsShader, ubgcolor, &bg_color, SHADER_UNIFORM_VEC4);
 
     float seconds = 0.0f;
 
@@ -137,17 +148,20 @@ int main() {
 
     // Initialize meteors
     Texture2D meteorSprite = LoadTexture("resources/Asteroid 01 - Base.png");
-    // Rectangle meteorSpriteSourceRec = {0.0f, 0.0f, meteorSprite.width, meteorSprite.height};
-    // Rectangle meteorSpriteDestRec   = {0.0f, 0.0f, meteorSprite.width, meteorSprite.height};
 
     for (int i = 0; i < MAX_METEORS; i++) {
         Vector2 spawnPosition = Vector2{
             (float)GetRandomValue(0, width),
             (float)GetRandomValue(-1, 1) * height
         };
+        Vector2 velocity = Vector2Subtract(rocket.position, spawnPosition);
+        velocity.x += GetRandomValue(-5, 5);
+        velocity.y += GetRandomValue(-5, 5);
+        velocity = Vector2Normalize(velocity);
+
         meteors[i] = Meteor{
             spawnPosition,
-            Vector2Normalize(Vector2Subtract(rocket.position, spawnPosition)),
+            velocity, 
             (float)GetRandomValue(0.5, 2.0)
         };
     }
@@ -184,19 +198,24 @@ int main() {
         }
 
 
+        // Select asteroid based on mouse click
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             Vector2 mousePos = GetMousePosition();
-            int idx;
+            int idx = -1;
             float lowestDistance = 999999;
             for (int i = 0 ; i < MAX_METEORS; i++) {
                 float distance = Vector2Distance(meteors[i].position, mousePos);
-                if (distance < lowestDistance) {
+                if (distance < 20 && distance < lowestDistance) {
                     lowestDistance = distance;
                     idx = i;
                 }
             }
-            currentSelectedMeteorDebug = &meteors[idx];
+            if (idx != -1)
+                currentSelectedMeteorDebug = &meteors[idx];
+            else
+                currentSelectedMeteorDebug = nullptr;
         }
+
 
         // Manual key control
         if (IsKeyDown(KEY_LEFT))  rocket.rotation -= ROCKET_ROTATION_SPEED;
@@ -215,7 +234,8 @@ int main() {
         destRec.y = rocket.position.y;
 
         seconds = GetTime();
-        SetShaderValue(shader, secondsLoc, &seconds, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(shader, useconds, &seconds, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(starsShader, utime, &seconds, SHADER_UNIFORM_FLOAT);
 
         // Keep the rocket within screen bounds
         int rocketHeight = destRec.height;
@@ -255,10 +275,10 @@ int main() {
                 if (isColliding) {
                     // Change direction of meteor after collision relative to size
                     Vector2 tempMeteor1Vel = meteor1->velocity;
-                    meteor1->velocity.x += -1 * meteor->velocity.x * meteor->radius * METEOR_COLLISION_DAMPING ;
-                    meteor1->velocity.y += -1 * meteor->velocity.y * meteor->radius * METEOR_COLLISION_DAMPING ;
-                    meteor->velocity.x += -1 * tempMeteor1Vel.x * meteor1->radius * METEOR_COLLISION_DAMPING;
-                    meteor->velocity.y += -1 * tempMeteor1Vel.y * meteor1->radius * METEOR_COLLISION_DAMPING;
+                    meteor1->velocity.x += meteor->velocity.x * meteor->radius * METEOR_COLLISION_DAMPING ;
+                    meteor1->velocity.y += meteor->velocity.y * meteor->radius * METEOR_COLLISION_DAMPING ;
+                    meteor->velocity.x +=  tempMeteor1Vel.x * meteor1->radius * METEOR_COLLISION_DAMPING;
+                    meteor->velocity.y +=  tempMeteor1Vel.y * meteor1->radius * METEOR_COLLISION_DAMPING;
                 }
             }
 
@@ -292,6 +312,9 @@ int main() {
 
         BeginDrawing();
             ClearBackground(BLACK);
+            BeginShaderMode(starsShader);
+                DrawTexture(colorTexture, 0, 0, Color{0, 0, 0, 30});
+            EndShaderMode();
             BeginShaderMode(shader);
                 DrawTexture(noiseTexture, 0, 0, Color{255, 255, 255, 30});
                 DrawTexture(noiseTexture, noiseTexture.width, 0, Color{255, 255, 255, 30});
@@ -322,8 +345,11 @@ int main() {
 
             if (currentSelectedMeteorDebug != nullptr) {
                 DrawCircleLines(currentSelectedMeteorDebug->position.x, currentSelectedMeteorDebug->position.y, currentSelectedMeteorDebug->radius * 20.0, RED);
+                DrawTextEx(ttfFont, TextFormat("%d", currentSelectedMeteorDebug - meteors), currentSelectedMeteorDebug->position, 1.5 * DEFAULT_FONT_SIZE, 1.0, RED);
                 DrawTextEx(ttfFont, TextFormat("Position: %03.0f, %03.0f", currentSelectedMeteorDebug->position.x, currentSelectedMeteorDebug->position.y), Vector2{width - 250.0f, 20},DEFAULT_FONT_SIZE, 1.0, WHITE );
                 DrawTextEx(ttfFont, TextFormat("Velocity: %0.2f, %0.2f", currentSelectedMeteorDebug->velocity.x, currentSelectedMeteorDebug->velocity.y), Vector2{width - 250.0, 45},DEFAULT_FONT_SIZE, 1.0, WHITE );
+            } else {
+                DrawTextEx(ttfFont, "[Debug]: Click asteroid to see debug info", Vector2{width - 500.f, 20}, DEFAULT_FONT_SIZE, 1.0, WHITE);
             }
 
         EndDrawing();
